@@ -22,5 +22,6 @@ npm install request --save
 npm install request-promise-native --save
 npm install @types/express-session --save
 npm install cookie-parser --save
+npm i body-parser --save
 
-ng generate component input-user-data-form --spec false
+ng generate component input-user-data-form --skip-tests

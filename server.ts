@@ -8,15 +8,6 @@ import { AppServerModule } from './src/main.server';
 import { APP_BASE_HREF } from '@angular/common';
 import { existsSync } from 'fs';
 
-declare namespace Express {
-  export interface Request {
-      user: any;
-  }
-  export interface Response {
-      user: any;
-  }
-}
-
 // The Express app is exported so that it can be used by serverless Functions.
 export function app(): express.Express {
   const server = express();
@@ -34,6 +25,9 @@ export function app(): express.Express {
   const NodeCache = require('node-cache'); 
   var session = require('express-session');
   var cookieParser = require('cookie-parser');
+  var bodyParser = require('body-parsee')
+  
+  server.use(bodyParser.urlencoded({extend:true}));
   
   const refreshTokenStore = {};
   const accessTokenCache = new NodeCache({ deleteOnExpire: true });
@@ -185,7 +179,7 @@ export function app(): express.Express {
     };
 
     server.get('/', async (req, res) => {
-      console.log("rendering the server.ts file");
+      console.log("rendering the server.ts main file");
 
       var sid = req.cookies['connect.sid'].substring(2,34);
 
@@ -194,12 +188,12 @@ export function app(): express.Express {
         const contact = await getContact(accessToken);
 
         console.log(contact[0].properties);
-        res.render(indexHtml, { req, providers: [{ provide: APP_BASE_HREF, useValue: req.baseUrl }] });
+        res.render('index', { req, providers: [{ provide: APP_BASE_HREF, useValue: req.baseUrl }], contacts: contact });
         /*res.write(`<h4>Access token: ${accessToken}</h4>`);
         displayContactName(res, contact);*/
       } else {
         //res.write(`<a href="/install"><h3>Install the app</h3></a>`);
-        res.render(indexHtml, { req, providers: [{ provide: APP_BASE_HREF, useValue: req.baseUrl }] });
+        res.render('index', { req, providers: [{ provide: APP_BASE_HREF, useValue: req.baseUrl }], contacts: {} });
       }
 
       //res.render(indexHtml, { req, providers: [{ provide: APP_BASE_HREF, useValue: req.baseUrl }] });

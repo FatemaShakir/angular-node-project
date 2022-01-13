@@ -1,7 +1,23 @@
-<h1>{{title}}</h1>
-
-<section>
-    <div class="connect-button">
-      <a mat-button href="/install" target="_blank">Connect</a>
+<div class="container">
+  <div class="row" style="background-color: rgb(84, 179, 235); text-align: center;">
+    <h3>{{title}}</h3>
+  </div>
+  
+  <div class="row">
+    <div class="col-3">
+      <div class="connect-button">
+        <a mat-button href="/install" target="_blank">{{connectButton}}</a>
+      </div>
     </div>
-</section>
+  
+    <div class="col-6">
+      <p>{{name}}</p>
+    </div>
+
+    <div class="col-3">
+      <div class="disconnect-button">
+        <a mat-button href="/install" target="_blank">{{disconnectButton}}</a>
+      </div>
+    </div>
+  </div>
+</div>
