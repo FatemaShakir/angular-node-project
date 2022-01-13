@@ -8,6 +8,15 @@ import { AppServerModule } from './src/main.server';
 import { APP_BASE_HREF } from '@angular/common';
 import { existsSync } from 'fs';
 
+declare namespace Express {
+  export interface Request {
+      user: any;
+  }
+  export interface Response {
+      user: any;
+  }
+}
+
 // The Express app is exported so that it can be used by serverless Functions.
 export function app(): express.Express {
   const server = express();
@@ -24,6 +33,7 @@ export function app(): express.Express {
   const request = require('request-promise-native');
   const NodeCache = require('node-cache'); 
   var session = require('express-session');
+  var cookieParser = require('cookie-parser');
   
   const refreshTokenStore = {};
   const accessTokenCache = new NodeCache({ deleteOnExpire: true });
@@ -39,6 +49,7 @@ export function app(): express.Express {
   
   const REDIRECT_URI = `http://localhost:4200/oauth-callback`;
 
+  server.use(cookieParser());
   server.use(session({
     secret: Math.random().toString(36).substring(2),
     resave: false,
@@ -69,131 +80,154 @@ export function app(): express.Express {
         console.log('       > Received an authorization token');
   
         const authCodeProof = {
-        grant_type: 'authorization_code',
+          grant_type: 'authorization_code',
+          client_id: CLIENT_ID,
+          client_secret: CLIENT_SECRET,
+          redirect_uri: REDIRECT_URI,
+          code: req.query['code']
+        };
+    
+        // Step 4
+        // Exchange the authorization code for an access token and refresh token
+        console.log('===> Step 4: Exchanging authorization code for an access token and refresh token');
+        
+        var sid = req.cookies['connect.sid'].substring(2,34);
+        
+        const token = await exchangeForTokens(sid, authCodeProof);
+        
+        if (token.message)
+          return res.redirect(`/error?msg=${token.message}`);
+    
+        //Once the tokens have been retrieved, use them to make a query to the HubSpot API
+        res.redirect(`/`);
+      }
+    });  
+
+    const exchangeForTokens = async (userId, exchangeProof) => {
+      try {
+        const responseBody = await request.post('https://api.hubapi.com/oauth/v1/token', {
+          form: exchangeProof
+        });
+        // Usually, this token data should be persisted in a database and associated with a user identity.
+        const tokens = JSON.parse(responseBody);
+        refreshTokenStore[userId] = tokens.refresh_token;
+        accessTokenCache.set(userId, tokens.access_token, Math.round(tokens.expires_in * 0.75));
+
+        console.log('       > Received an access token and refresh token');
+        return tokens.access_token;
+      } catch (e) {
+        console.error(`       > Error exchanging ${exchangeProof.grant_type} for access token`);
+        //return JSON.parse(e.response.body);
+      }
+    };
+
+    const refreshAccessToken = async (userId) => {
+      const refreshTokenProof = {
+        grant_type: 'refresh_token',
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
         redirect_uri: REDIRECT_URI,
-        code: req.query['code']
+        refresh_token: refreshTokenStore[userId]
       };
-    
-      // Step 4
-      // Exchange the authorization code for an access token and refresh token
-      console.log('===> Step 4: Exchanging authorization code for an access token and refresh token');
-      
-      console.log(req.sessionID);
-      //const token = await exchangeForTokens(req.query['sessionID'], authCodeProof);
-      //if (token.message) {
-      //  return res.redirect(`/error?msg=${token.message}`);
-      //}
-  
-      // Once the tokens have been retrieved, use them to make a query
-      // to the HubSpot API
-      //res.redirect(`/`);
-    }
-  });  
-
-  /*const exchangeForTokens = async (userId, exchangeProof) => {
-    try {
-      const responseBody = await request.post('https://api.hubapi.com/oauth/v1/token', {
-        form: exchangeProof
-      });
-      // Usually, this token data should be persisted in a database and associated with a user identity.
-      const tokens = JSON.parse(responseBody);
-      refreshTokenStore[userId] = tokens.refresh_token;
-      accessTokenCache.set(userId, tokens.access_token, Math.round(tokens.expires_in * 0.75));
-
-      console.log('       > Received an access token and refresh token');
-      return tokens.access_token;
-    } catch (e) {
-      console.error(`       > Error exchanging ${exchangeProof.grant_type} for access token`);
-      return JSON.parse(e.response.body);
-    }
-  };*/
-
-  /*const refreshAccessToken = async (userId) => {
-    const refreshTokenProof = {
-      grant_type: 'refresh_token',
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      redirect_uri: REDIRECT_URI,
-      refresh_token: refreshTokenStore[userId]
+      return await exchangeForTokens(userId, refreshTokenProof);
     };
-    return await exchangeForTokens(userId, refreshTokenProof);
-  };
 
-  const getAccessToken = async (userId) => {
-    // If the access token has expired, retrieve
-    // a new one using the refresh token
-    if (!accessTokenCache.get(userId)) {
-      console.log('Refreshing expired access token');
-      await refreshAccessToken(userId);
-    }
-    return accessTokenCache.get(userId);
-  };
+    const getAccessToken = async (userId) => {
+      // If the access token has expired, retrieve
+      // a new one using the refresh token
+      if (!accessTokenCache.get(userId)) {
+        console.log('Refreshing expired access token');
+        await refreshAccessToken(userId);
+      }
+      return accessTokenCache.get(userId);
+    };
 
-  const isAuthorized = (userId) => {
-    return refreshTokenStore[userId] ? true : false;
-  };*/
+    const isAuthorized = (userId) => {
+      return refreshTokenStore[userId] ? true : false;
+    };
 
-  //====================================================//
-  //   Using an Access Token to Query the HubSpot API   //
-  //====================================================//
+    //====================================================//
+    //   Using an Access Token to Query the HubSpot API   //
+    //====================================================//
 
-  /*const getContact = async (accessToken) => {
-    console.log('');
-    console.log('=== Retrieving a contact from HubSpot using the access token ===');
-    try {
-      const headers = {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      };
-      console.log('===> Replace the following request.get() to test other API calls');
-      console.log('===> request.get(\'https://api.hubapi.com/contacts/v1/lists/all/contacts/all?count=1\')');
-      const result = await request.get('https://api.hubapi.com/contacts/v1/lists/all/contacts/all?count=2', {
-        headers: headers
-      });
+    const getContact = async (accessToken) => {
+      console.log('');
+      console.log('=== Retrieving a contact from HubSpot using the access token ===');
+      try {
+        const headers = {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        };
+        console.log('===> Replace the following request.get() to test other API calls');
+        console.log('===> request.get(\'https://api.hubapi.com/contacts/v1/lists/all/contacts/all?count=1\')');
+        const result = await request.get('https://api.hubapi.com/contacts/v1/lists/all/contacts/all?count=2', {
+          headers: headers
+        });
 
-      return JSON.parse(result).contacts[0];
-    } catch (e) {
-      console.error('  > Unable to retrieve contact');
-      return JSON.parse(e.response.body);
-    }
-  };
+        return JSON.parse(result).contacts;
+      } catch (e) {
+        console.error('  > Unable to retrieve contact');
+        //return JSON.parse(e.response.body);
+      }
+    };
 
-  //========================================//
-  //   Displaying information to the user   //
-  //========================================//
+    //========================================//
+    //   Displaying information to the user   //
+    //========================================//
 
-  const displayContactName = (res, contact) => {
-    if (contact.status === 'error') {
-      res.write(`<p>Unable to retrieve contact! Error Message: ${contact.message}</p>`);
-      return;
-    }
-    const { firstname, lastname } = contact.properties;
-    res.write(`<p>Contact name: ${firstname.value} ${lastname.value}</p>`);
-  };
+    const displayContactName = (res, contact) => {
+      if (contact.status === 'error') {
+        res.write(`<p>Unable to retrieve contact! Error Message: ${contact.message}</p>`);
+        return;
+      }
+      const { firstname, lastname } = contact.properties;
+      res.write(`<p>Contact name: ${firstname.value} ${lastname.value}</p>`);
+    };
 
-  server.get('/', async (req, res) => {
-    res.setHeader('Content-Type', 'text/html');
-    res.write(`<h2>HubSpot OAuth 2.0 Quickstart App</h2>`);
-    if (isAuthorized(req.sessionID)) {
-      const accessToken = await getAccessToken(req.sessionID);
-      const contact = await getContact(accessToken);
-      res.write(`<h4>Access token: ${accessToken}</h4>`);
-      displayContactName(res, contact);
-    } else {
-      res.write(`<a href="/install"><h3>Install the app</h3></a>`);
-    }
-    res.end();
-  });
+    server.get('/', async (req, res) => {
+      console.log("rendering the server.ts file");
 
-  server.get('/error', (req, res) => {
-    res.setHeader('Content-Type', 'text/html');
-    res.write(`<h4>Error: ${req.query.msg}</h4>`);
-    res.end();
-  });*/
+      var sid = req.cookies['connect.sid'].substring(2,34);
 
-//-----------------------------------------------------
+      if (isAuthorized(sid)) {
+        const accessToken = await getAccessToken(sid);
+        const contact = await getContact(accessToken);
+
+        console.log(contact[0].properties);
+        res.render(indexHtml, { req, providers: [{ provide: APP_BASE_HREF, useValue: req.baseUrl }] });
+        /*res.write(`<h4>Access token: ${accessToken}</h4>`);
+        displayContactName(res, contact);*/
+      } else {
+        //res.write(`<a href="/install"><h3>Install the app</h3></a>`);
+        res.render(indexHtml, { req, providers: [{ provide: APP_BASE_HREF, useValue: req.baseUrl }] });
+      }
+
+      //res.render(indexHtml, { req, providers: [{ provide: APP_BASE_HREF, useValue: req.baseUrl }] });
+    });
+
+    /*server.get('/', async (req, res) => {
+      console.log("rendering the server.ts main page file");
+
+      var sid = req.cookies['connect.sid'].substring(2,34);
+
+      if (isAuthorized(sid)) {
+        const accessToken = await getAccessToken(sid);
+        const contact = await getContact(accessToken);
+        res.write(`<h4>Access token: ${accessToken}</h4>`);
+        displayContactName(res, contact);
+      } else {
+        res.write(`<a href="/install"><h3>Install the app</h3></a>`);
+      }
+      res.end();
+    });*/
+
+    server.get('/error', (req, res) => {
+      res.setHeader('Content-Type', 'text/html');
+      res.write(`<h4>Error: ${req.query['msg']}</h4>`);
+      res.end();
+    });
+
+//-------------------------------------------------------------------------------------------
 
   server.set('view engine', 'html');
   server.set('views', distFolder);

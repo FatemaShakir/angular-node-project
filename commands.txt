@@ -20,5 +20,7 @@ npm install express-session --save
 npm install node-cache --save
 npm install request --save
 npm install request-promise-native --save
+npm install @types/express-session --save
+npm install cookie-parser --save
 
 ng generate component input-user-data-form --spec false
