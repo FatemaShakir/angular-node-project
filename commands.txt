@@ -1,0 +1,24 @@
+npm install -g @angular/cli
+ng new hubspot-oauth-angular-project
+cd hubspot-oauth-angular-project
+npm install --save bootstrap@3
+
+//changes in package.json
+"styles": [
+    "node_modules/bootstrap/dist/css/bootstrap.min.css",
+    "src/styles.css"
+]
+
+ng serve
+//PORT = 4200
+
+ng add @nguniversal/express-engine
+npm run dev:ssr
+//PORT = 4200
+
+npm install express-session --save
+npm install node-cache --save
+npm install request --save
+npm install request-promise-native --save
+
+ng generate component input-user-data-form --spec false
